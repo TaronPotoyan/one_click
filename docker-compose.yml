@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: taron
+      POSTGRES_PASSWORD: taron123
+      POSTGRES_DB: one_click_local
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taron -d one_click_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "taron123"]
+    environment:
+      REDIS_PASSWORD: taron123
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "taron123", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrations-svc:
+    build:
+      context: ./migrations-svc
+    container_name: migrations-svc
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://taron:taron123@postgres:5432/one_click_local?schema=public
+    env_file:
+      - ./migrations-svc/.env
+
+  tenant-svc:
+    build:
+      context: ./tenant-svc
+    container_name: tenant-svc
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://taron:taron123@postgres:5432/one_click_local?schema=public
+      REDIS_URL: redis://:taron123@redis:6379
+    env_file:
+      - ./tenant-svc/.env
+
+  super_admin-svc:
+    build:
+      context: ./super_admin-svc
+    container_name: super_admin-svc
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3002:3000"
+    environment:
+      DATABASE_URL: postgresql://taron:taron123@postgres:5432/one_click_local?schema=public
+      REDIS_URL: redis://:taron123@redis:6379
+    env_file:
+      - ./super_admin-svc/.env
+
+  telegram-svc:
+    build:
+      context: ./telegram-svc
+    container_name: telegram-svc
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3003:3000"
+    environment:
+      DATABASE_URL: postgresql://taron:taron123@postgres:5432/one_click_local?schema=public
+      REDIS_URL: redis://:taron123@redis:6379
+    env_file:
+      - ./telegram-svc/.env
+
+volumes:
+  postgres_data:
+  redis_data:
